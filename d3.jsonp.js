@@ -1,6 +1,5 @@
 d3.jsonp = function (url, callback) {
   function rand() {
-    return "callback" + Math.random();
     var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
       c = '', i = -1;
     while (++i < 15) c += chars.charAt(Math.floor(Math.random() * 52));

@@ -1,26 +1,50 @@
 function main() {
-  d3.jsonp("http://reddit.com/r/javascript.json?jsonp=d3.jsonp.foo",
-      _.compose(visualize,formatSingleSubreddit));
+  pollSource("http://www.reddit.com/.json?jsonp={callback}",
+      _.compose(visualize,subredditUpdater()));
+}
+
+function pollSource(url,cb,n) {
+  if(n == null) n = 2000;
+  var run = function() {
+    d3.jsonp(url,cb);
+    setTimeout(run,n);
+  }
+  setTimeout(run,n);
 }
 
 function visualize(redditActivitySources) {
   var sources = d3.select("#viz")
     .selectAll(".source")
-    .data(redditActivitySources);
+    .data(redditActivitySources,function(data,index) {
+      return data.id;
+    });
+
+  var scoreRadius = function(data) {
+    console.log(data.score,data.previous && data.previous.score);
+    return data.score * 0.05;
+  };
+
+  sources
+    .transition()
+    .select("circle")
+    .attr("r",scoreRadius)
+
+  sources
+    .classed("increase",function(data) {
+      return data.previous.score < data.score;
+    })
 
   var sourcesEntering = sources
     .enter()
       .append("g")
       .classed("source",true)
       .attr("transform",function(d,i) {
-        return "translate(250," + i * 250 + ")"
+        return "translate(250," + i * 250 + 250 + ")"
       });
 
   sourcesEntering
     .append("circle")
-    .attr("r",function(d,i) {
-      return d.score * 5;
-    });
+    .attr("r",scoreRadius);
 
   // sources is now UPDATE & ENTER
   
@@ -30,6 +54,24 @@ function visualize(redditActivitySources) {
     .attr("dy",0)
     .text(function(d) { return d.title });
 
+}
+
+function subredditUpdater() {
+  var previous = false;
+  return function(rawData) {
+    var formatted = formatSingleSubreddit(rawData);
+    formatted = [_.find(formatted,function(d) { return d.id = "1le4me" })];
+    if(previous) {
+      _.each(formatted,function(item) {
+        if(previous[item.id]) item.previous = previous[item.id];
+      })
+    }
+    previous = _.reduce(formatted,function(prev,item) {
+      prev[item.id] = item;
+      return prev;
+    },{})
+    return formatted;
+  }
 }
 
 function formatSingleSubreddit(rawData) {
