@@ -9,7 +9,7 @@ function pollSource(url,cb,n) {
     d3.jsonp(url,cb);
     setTimeout(run,n);
   }
-  setTimeout(run,n);
+  run();
 }
 
 // using pack layout - this will transform
@@ -30,44 +30,36 @@ var packLayout = d3.layout.pack()
 
 function visualize(redditActivitySources) {
 
+  var el = document.querySelector("#viz");
+  var rect = el.getBoundingClientRect();
+  var dimMax = Math.min(rect.width,rect.height);
+  var dimScale = d3.scale.linear().range([0,dimMax]);
 
-  var packed = packLayout.nodes({children: redditActivitySources})[0];
+  var sizedPack = packLayout.size([dimMax,dimMax]).padding(dimMax/100);
+
+  var packed = sizedPack.nodes({children: redditActivitySources})[0];
+  var nodes = packed.children;
+
+  var scoreRadius = function(d) { return d.r }
 
   var sources = d3.select("#viz")
     .selectAll(".source")
-    .data(packed.children,function(data,index) {
+    .data(nodes,function(data,index) {
       return data.id;
     });
-
-  var scoreDomain = d3.extent(redditActivitySources,function(data) {
-    return data.score
-  });
-
-  var total = _.reduce(redditActivitySources,function(sum,data) {
-    return sum + data.score
-  },0);
-
-  var scores = _.pluck(redditActivitySources,"score");
-  var mean = d3.mean(scores);
-  var stdDev = Math.sqrt(_.reduce(scores,function(sum,score) {
-    return sum + Math.pow(score - mean,2)
-  },0) / scores.length);
-  var coefficientOfVariation = stdDev / mean;
-
-  var smallest = 1 / redditActivitySources.length * Math.abs(1 - coefficientOfVariation);
-
-  var shareOfTotalFromMax = scoreDomain[1] / total;
-
-  var scoreRadius = d3.scale.linear()
-    .range([(smallest * 50) + "%",(shareOfTotalFromMax * 50) + "%"])
-
 
   sources
     .transition()
     .select("circle")
-    .attr("r",function(data) {
-      return scoreRadius(data.r);
-    })
+    .attr("r",scoreRadius);
+
+  var setTransform = function(d,i) {
+    return "translate(" + (d.x) + "," + (d.y) + ")";
+  };
+
+  sources
+    .transition(250)
+    .attr("transform",setTransform);
 
   sources
     .classed("increase",function(data) {
@@ -79,10 +71,7 @@ function visualize(redditActivitySources) {
     .enter()
       .append("g")
       .classed("source",true)
-      .attr("transform",function(d,i) {
-        var r = scoreRadius(d);
-        return "translate(" + (d.x * 1200) + "," + (d.y * 1200) + ")"
-      });
+      .attr("transform",setTransform);
 
   sourcesEntering
     .append("circle")
@@ -100,17 +89,18 @@ function visualize(redditActivitySources) {
 
 function subredditUpdater() {
   var previous = false;
+  var newPrevious;
   return function(rawData) {
+    previous = newPrevious;
     var formatted = formatSingleSubreddit(rawData);
-    if(previous) {
-      _.each(formatted,function(item) {
-        if(previous[item.id]) item.previous = previous[item.id];
-      })
-    }
-    previous = _.reduce(formatted,function(prev,item) {
+    newPrevious = _.reduce(formatted,function(prev,item) {
       prev[item.id] = item;
       return prev;
     },{})
+    if(!previous) return [];
+    _.each(formatted,function(item) {
+      if(previous[item.id]) item.previous = previous[item.id];
+    })
     return formatted;
   }
 }
