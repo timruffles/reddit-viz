@@ -1,15 +1,72 @@
 function main() {
-  pollSource("http://www.reddit.com/.json?jsonp={callback}",
-      _.compose(visualize,subredditUpdater()));
+  var sources = {};
+  var n = 2000;
+  var events = []
+  var initial = true
+  pollSource("http://www.reddit.com/.json?jsonp={callback}",function(rawData) {
+    // console.log(JSON.stringify(sources))
+    var newData = formatSingleSubreddit(rawData);
+    console.log(newData.length)
+    events = generateEvents(newData,sources);
+    if(initial) {
+      events.forEach(function(f) { f(sources) })
+      initial = false
+      return visualize(sources)
+    }
+    var times = 0;
+    repeat(function() {
+      if(events.length === 0) return "STOP";
+      events.pop()(sources)
+      visualize(sources)
+    },n/events.length)
+  },n)
 }
 
-function pollSource(url,cb,n) {
+function enter(datum) {
+  return function(sources) {
+    sources[datum.id] = datum
+  }
+}
+function exit(datum) {
+  return function(sources) {
+    delete sources[datum.id]
+  }
+}
+function update(datum) {
+  return function(sources) {
+    if(!sources[datum.id].diffs) sources[datum.id].diffs = []
+    sources[datum.id].diffs.push(datum)
+  }
+}
+
+function generateEvents(newData,sources) {
+  var ids = _.pluck(newData,"id")
+  var displayedIds = _.keys(sources)
+  var exiting = _.difference(displayedIds,ids)
+  var exits = _.map(exiting,function(id) { return exit({id: id}) })
+  var updates = _.map(newData,function(datum) {
+    var displayed = sources[datum.id];
+    if(displayed) {
+      return update({id:datum.id, diff: datum.score - displayed.source})
+    } else {
+      return enter(datum)
+    }
+  })
+  return exits.concat(updates)
+}
+
+function repeat(cb,n) {
   if(n == null) n = 2000;
   var run = function() {
-    d3.jsonp(url,cb);
+    var stop = cb()
+    if(stop === "STOP") return
     setTimeout(run,n);
   }
   run();
+}
+
+function pollSource(url,cb,n) {
+  repeat(d3.jsonp.bind(d3,url,cb),n)
 }
 
 // using pack layout - this will transform
@@ -29,6 +86,7 @@ var packLayout = d3.layout.pack()
   });
 
 function visualize(redditActivitySources) {
+  redditActivitySources = _.sortBy(_.values(redditActivitySources),function(x) { return x.id })
 
   var el = document.querySelector("#viz");
   var rect = el.getBoundingClientRect();
@@ -51,7 +109,22 @@ function visualize(redditActivitySources) {
   sources
     .transition()
     .select("circle")
-    .attr("r",scoreRadius);
+    .attr("r",scoreRadius)
+
+  var diffs = sources
+    .selectAll(".diff")
+    .data(function(d) { return d.diffs || [] })
+
+  diffs
+    .enter()
+    .append("circle")
+    .classed("diff",true)
+    .attr("r",5)
+    .style("fill","pink")
+    .attr("transform","translate(-100,-100)")
+    .transition()
+    .duration(500)
+    .attr("transform","translate(0,0)")
 
   var setTransform = function(d,i) {
     return "translate(" + (d.x) + "," + (d.y) + ")";
@@ -85,24 +158,11 @@ function visualize(redditActivitySources) {
     .attr("dy",0)
     .text(function(d) { return d.title });
 
-}
+  sources
+    .exit()
+    .classed("exiting",true)
+    .remove()
 
-function subredditUpdater() {
-  var previous = false;
-  var newPrevious;
-  return function(rawData) {
-    previous = newPrevious;
-    var formatted = formatSingleSubreddit(rawData);
-    newPrevious = _.reduce(formatted,function(prev,item) {
-      prev[item.id] = item;
-      return prev;
-    },{})
-    if(!previous) return [];
-    _.each(formatted,function(item) {
-      if(previous[item.id]) item.previous = previous[item.id];
-    })
-    return formatted;
-  }
 }
 
 function formatSingleSubreddit(rawData) {
