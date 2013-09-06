@@ -114,6 +114,7 @@ function visualize(redditActivitySources) {
   var el = document.querySelector("#viz");
   var rect = el.getBoundingClientRect();
   var dimMax = Math.min(rect.width,rect.height);
+  var diagonal = Math.sqrt(2 * dimMax * dimMax);
   var dimScale = d3.scale.linear().range([0,dimMax]);
 
   var sizedPack = packLayout.size([dimMax,dimMax]).padding(dimMax/100);
@@ -123,78 +124,126 @@ function visualize(redditActivitySources) {
 
   var scoreRadius = function(d) { return d.r }
 
-  var stories = d3.select("#viz")
-    .selectAll(".source")
-    .data(nodes,function(data,index) {
-      return data.id;
-    });
+  var storyColor = d3.scale.category20()
 
-  stories
-    .transition()
-    .select("circle")
-    .attr("r",scoreRadius)
+  storyViz()
+  menuVis()
 
-  var diffs = stories
-    .selectAll(".diff")
-    .data(function(d) { return d.diffs || [] },function(datum){
-      return datum.id
-    })
 
-  diffs
-    .enter()
-    .append("circle")
-    .classed("diff",true)
-    .attr("r",5)
-    .style("fill","pink")
-    .attr("transform","translate(-100,-100)")
-    .transition()
-    .duration(500)
-    .delay(function(d,i) { return i * 200 })
-    .attr("transform","translate(0,0)")
-    .each("end",function(datum) {
-      datum.apply()
-    })
+  function storyViz() {
+    var stories = d3.select("#viz")
+      .selectAll(".source")
+      .data(nodes,function(data,index) {
+        return data.id;
+      });
 
-  diffs
-    .exit()
-    .remove()
+    stories
+      .transition()
+      .select("circle")
+      .attr("r",scoreRadius)
 
-  var setTransform = function(d,i) {
-    return "translate(" + (d.x) + "," + (d.y) + ")";
-  };
+    function addDiffs() {
+      var diffs = stories
+        .selectAll(".diff")
+        .data(function(d) { return d.diffs || [] },function(datum){
+          return datum.id
+        })
 
-  stories
-    .transition(250)
-    .attr("transform",setTransform);
+      diffs
+        .enter()
+        .append("circle")
+        .classed("diff",true)
+        .classed("down",function(d) {
+          return d.diff < 1
+        })
+        .attr("r",function(datum) {
+          return Math.abs(datum.diff) / 50
+        })
+        .attr("transform",function() {
+          var a = Math.random() * 2 * Math.PI;
+          var x = Math.cos(a) * dimMax / 2
+          var y = Math.sin(a) * dimMax / 2
+          return "translate(" + x.toFixed(2) + "," + y.toFixed(2) + ")";
+        })
+        .transition()
+        .duration(500)
+        .delay(function(d,i) { return i * 200 })
+        .attr("transform","translate(0,0)")
+        .each("end",function(datum) {
+          datum.apply()
+        })
 
-  stories
-    .classed("increase",function(data) {
-      if(!data.previous) return false;
-      return data.previous.score < data.score;
-    })
+      diffs
+        .exit()
+        .remove()
+    }
 
-  var storiesEntering = stories
-    .enter()
-      .append("g")
-      .classed("source",true)
+    addDiffs()
+
+    var setTransform = function(d,i) {
+      return "translate(" + (d.x) + "," + (d.y) + ")";
+    };
+
+    stories
+      .transition(250)
       .attr("transform",setTransform);
 
-  storiesEntering
-    .append("circle")
-    .attr("r",scoreRadius);
+    stories
+      .classed("increase",function(data) {
+        if(!data.previous) return false;
+        return data.previous.score < data.score;
+      })
 
-  // sources is now UPDATE & ENTER
-  
-  storiesEntering
-    .append("text")
-    .attr("dx",0)
-    .attr("dy",0)
-    .text(function(d) { return d.title });
 
-  stories
-    .exit()
-    .classed("exiting",true)
-    .remove()
+    var storiesEntering = stories
+      .enter()
+        .append("g")
+        .classed("source",true)
+        .attr("transform",setTransform);
+
+    storiesEntering
+      .append("circle")
+      .attr("fill",idToColor)
+      .attr("r",scoreRadius);
+
+    // sources is now UPDATE & ENTER
+    
+    storiesEntering
+      .attr("dx",0)
+      .attr("dy",0)
+
+    stories
+      .exit()
+      .classed("exiting",true)
+      .remove()
+  }
+
+  function idToColor(d) {
+    return storyColor(d.id)
+  }
+
+  function menuVis() {
+    var sorted = _.sortBy(redditActivitySources,function(d) { return -d.score })
+
+    var menu = d3.select("#menu")
+      .selectAll(".story")
+      .data(sorted,function(d) { return d.id })
+      
+    menu.enter()
+      .append("a")
+      .style("color",idToColor)
+      .classed("story",true);
+
+    menu.text(function(d) { 
+        return d.score + " " + d.title 
+      })
+      .style("top",function(d,i) {
+        return i * 1.5 + "em"
+      })
+
+    menu.exit()
+      .remove()
+  }
 
 }
 
