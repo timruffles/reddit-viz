@@ -46,10 +46,23 @@
       position: absolute;
       height: 1em;
     }
+    #scale {
+      float: left;
+      width: 2%;
+      height: 400px;
+      position: relative;
+    }
+    .story-point {
+      width: 60%;
+      height: 4px;
+      position: absolute;
+      -webkit-transition: all 0.5s;
+    }
   </style>
 </head>
 <body>
-  <svg id="viz" width=70% height=100%></svg>
+  <svg id="viz" width=68% height=100%></svg>
+  <div id="scale" ></div>
   <div id="menu">
   </div>
   <script src="d3.js"></script>

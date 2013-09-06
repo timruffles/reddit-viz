@@ -5,7 +5,9 @@ function main() {
   var events = []
   var initial = true
 
-  pollSource("http://www.reddit.com/.json?jsonp={callback}",handleRedditData,n)
+  var reddit = "" // empty for frontpage
+
+  pollSource("http://www.reddit.com/" + reddit + ".json?jsonp={callback}",handleRedditData,n)
 
   function handleRedditData(rawData) {
     var newData = formatSingleSubreddit(rawData);
@@ -117,6 +119,8 @@ function visualize(redditActivitySources) {
   var diagonal = Math.sqrt(2 * dimMax * dimMax);
   var dimScale = d3.scale.linear().range([0,dimMax]);
 
+  var scoreExtent = d3.extent(redditActivitySources,function(d) { return d.score })
+
   var sizedPack = packLayout.size([dimMax,dimMax]).padding(dimMax/100);
 
   var packed = sizedPack.nodes({children: redditActivitySources})[0];
@@ -126,8 +130,35 @@ function visualize(redditActivitySources) {
 
   var storyColor = d3.scale.category20()
 
+  var scoreHeight = d3.scale.sqrt()
+    .range([rect.height - 15 + "px",15 + "px"])
+    .domain(scoreExtent)
+
+  var scalingForScore;
+  if(nodes.length > 0) {
+    scalingForScore = nodes[0].r / nodes[0].score;
+  }
+
   storyViz()
   menuVis()
+  scoreLogChart()
+
+  function scoreLogChart() {
+    var svg = d3.select("#scale")
+    var stories = svg.selectAll(".story-point")
+      .data(redditActivitySources,function(d) { return d.id })
+
+    stories.enter()
+      .append("div")
+      .classed("story-point",true)
+      .style("background",idToColor)
+
+    stories
+      .style("top",function(d) { return scoreHeight(d.score) })
+
+    stories.exit()
+      .remove()
+  }
 
 
   function storyViz() {
@@ -157,7 +188,7 @@ function visualize(redditActivitySources) {
           return d.diff < 1
         })
         .attr("r",function(datum) {
-          return Math.abs(datum.diff) / 50
+          return Math.abs(datum.diff) * scalingForScore
         })
         .attr("transform",function() {
           var a = Math.random() * 2 * Math.PI;
@@ -203,6 +234,9 @@ function visualize(redditActivitySources) {
 
     storiesEntering
       .append("circle")
+      .on("click",function(datum) {
+        window.location.href = datum.url
+      })
       .attr("fill",idToColor)
       .attr("r",scoreRadius);
 
