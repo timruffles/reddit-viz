@@ -1,53 +1,68 @@
 function main() {
-  var sources = {};
+  var stories = {};
   var n = 2000;
   var events = []
   var initial = true
   pollSource("http://www.reddit.com/.json?jsonp={callback}",function(rawData) {
-    // console.log(JSON.stringify(sources))
+    // console.log(JSON.stringify(stories))
     var newData = formatSingleSubreddit(rawData);
-    console.log(newData.length)
-    events = generateEvents(newData,sources);
+    events = generateEvents(newData,stories);
     if(initial) {
-      events.forEach(function(f) { f(sources) })
+      _.invoke(events,"run",stories)
       initial = false
-      return visualize(sources)
+      return visualize(stories)
     }
     var times = 0;
     repeat(function() {
       if(events.length === 0) return "STOP";
-      events.pop()(sources)
-      visualize(sources)
+      events.pop().run(stories)
+      visualize(stories)
     },n/events.length)
   },n)
 }
 
 function enter(datum) {
-  return function(sources) {
-    sources[datum.id] = datum
+  return {
+    id: _.uniqueId(),
+    run: function(stories) {
+      stories[datum.id] = datum
+    }
   }
 }
 function exit(datum) {
-  return function(sources) {
-    delete sources[datum.id]
+  return {
+    id: _.uniqueId(),
+    run: function(stories) {
+      delete stories[datum.id]
+    }
   }
 }
 function update(datum) {
-  return function(sources) {
-    if(!sources[datum.id].diffs) sources[datum.id].diffs = []
-    sources[datum.id].diffs.push(datum)
+  return {
+    id: _.uniqueId(),
+    run: function(stories) {
+      if(!stories[datum.id].diffs) stories[datum.id].diffs = []
+      var id = this.id
+      datum.apply = function() {
+        var source = stories[datum.id];
+        source.score += datum.diff;
+        source.diffs = _.filter(source.diffs,function(diff) { return diff.id === id },this)
+      }
+      stories[datum.id].diffs.push(datum)
+    },
   }
 }
 
-function generateEvents(newData,sources) {
+
+function generateEvents(newData,stories) {
   var ids = _.pluck(newData,"id")
-  var displayedIds = _.keys(sources)
+  var displayedIds = _.keys(stories)
   var exiting = _.difference(displayedIds,ids)
   var exits = _.map(exiting,function(id) { return exit({id: id}) })
   var updates = _.map(newData,function(datum) {
-    var displayed = sources[datum.id];
+    var displayed = stories[datum.id];
     if(displayed) {
-      return update({id:datum.id, diff: datum.score - displayed.source})
+      return update({id:datum.id, diff: datum.score - displayed.score})
     } else {
       return enter(datum)
     }
@@ -100,20 +115,22 @@ function visualize(redditActivitySources) {
 
   var scoreRadius = function(d) { return d.r }
 
-  var sources = d3.select("#viz")
+  var stories = d3.select("#viz")
     .selectAll(".source")
     .data(nodes,function(data,index) {
       return data.id;
     });
 
-  sources
+  stories
     .transition()
     .select("circle")
     .attr("r",scoreRadius)
 
-  var diffs = sources
+  var diffs = stories
     .selectAll(".diff")
-    .data(function(d) { return d.diffs || [] })
+    .data(function(d) { return d.diffs || [] },function(datum){
+      return datum.id
+    })
 
   diffs
     .enter()
@@ -124,41 +141,49 @@ function visualize(redditActivitySources) {
     .attr("transform","translate(-100,-100)")
     .transition()
     .duration(500)
+    .delay(function(d,i) { return i * 200 })
     .attr("transform","translate(0,0)")
+    .each("end",function(datum) {
+      datum.apply()
+    })
+
+  diffs
+    .exit()
+    .remove()
 
   var setTransform = function(d,i) {
     return "translate(" + (d.x) + "," + (d.y) + ")";
   };
 
-  sources
+  stories
     .transition(250)
     .attr("transform",setTransform);
 
-  sources
+  stories
     .classed("increase",function(data) {
       if(!data.previous) return false;
       return data.previous.score < data.score;
     })
 
-  var sourcesEntering = sources
+  var storiesEntering = stories
     .enter()
       .append("g")
       .classed("source",true)
       .attr("transform",setTransform);
 
-  sourcesEntering
+  storiesEntering
     .append("circle")
     .attr("r",scoreRadius);
 
   // sources is now UPDATE & ENTER
   
-  sourcesEntering
+  storiesEntering
     .append("text")
     .attr("dx",0)
     .attr("dy",0)
     .text(function(d) { return d.title });
 
-  sources
+  stories
     .exit()
     .classed("exiting",true)
     .remove()
