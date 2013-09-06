@@ -1,24 +1,32 @@
 function main() {
+
   var stories = {};
   var n = 2000;
   var events = []
   var initial = true
-  pollSource("http://www.reddit.com/.json?jsonp={callback}",function(rawData) {
-    // console.log(JSON.stringify(stories))
+
+  pollSource("http://www.reddit.com/.json?jsonp={callback}",handleRedditData,n)
+
+  function handleRedditData(rawData) {
     var newData = formatSingleSubreddit(rawData);
     events = generateEvents(newData,stories);
-    if(initial) {
-      _.invoke(events,"run",stories)
-      initial = false
-      return visualize(stories)
-    }
-    var times = 0;
+    if(handleInitial(events)) return
+    runEvents(events)
+  }
+  function runEvents(events) {
     repeat(function() {
       if(events.length === 0) return "STOP";
       events.pop().run(stories)
       visualize(stories)
     },n/events.length)
-  },n)
+  }
+  function handleInitial() {
+    if(!initial) return false
+    _.invoke(events,"run",stories)
+    initial = false
+    visualize(stories)
+    return true
+  }
 }
 
 function enter(datum) {
